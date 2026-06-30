@@ -9,7 +9,7 @@
 #SBATCH --job-name="${name}"
 #SBATCH --time=24:00:00
 #SBATCH --partition=short
-#SBATCH --exclude=aswin-[01-04]
+##SBATCH --exclude=aswin-[01-04]
 ##SBATCH --nodelist=compute-3-03
 % if account:
 #SBATCH --account="${account}"
