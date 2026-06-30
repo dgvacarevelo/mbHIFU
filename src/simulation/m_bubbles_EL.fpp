@@ -70,7 +70,8 @@ module m_bubbles_EL
     real(wp), allocatable, dimension(:)   :: bub_qvis      !< Time-averaged viscous intensity (HIFU)
     real(wp), allocatable, dimension(:)   :: bub_qth       !< Time-averaged thermal intensity (HIFU)
     real(wp), allocatable, dimension(:)   :: bub_hifu_rad  !< Time-averaged radius
-    $:GPU_DECLARE(create='[mrmtnt_shell, mrmtnt_Rbuck, mrmtnt_Rrupt, bub_qvis, bub_qth, bub_hifu_rad, moments_bubs, acPw_bubs]')
+    real(wp), allocatable, dimension(:)   :: bub_rho       !< Density at infinity per bub
+    $:GPU_DECLARE(create='[mrmtnt_shell, mrmtnt_Rbuck, mrmtnt_Rrupt, bub_qvis, bub_qth, bub_hifu_rad, moments_bubs, acPw_bubs, bub_rho]')
 
     integer, private :: lag_num_ts  !< Number of time stages in the time-stepping scheme
     $:GPU_DECLARE(create='[lag_num_ts]')
@@ -157,9 +158,10 @@ contains
         @:ALLOCATE(bub_qvis(1:nBubs_glb))
         @:ALLOCATE(bub_qth(1:nBubs_glb))
         @:ALLOCATE(bub_hifu_rad(1:nBubs_glb))
+        @:ALLOCATE(bub_rho(1:nBubs_glb))
 
         if (hifu_params%moments) then
-            @:ALLOCATE(moments_bubs(1:4, 1:4))
+            @:ALLOCATE(moments_bubs(1:5, 1:4))
         end if
         if (hifu_params%power_balance) then
             @:ALLOCATE(acPw_bubs(1:3))
@@ -961,7 +963,7 @@ contains
         real(wp)                                               :: myPinf, aux1, aux2, myCson, myRho
         real(wp)                                               :: gamma, pi_inf, qv
         real(wp)                                               :: Rb, myConc_v, myPout, myInt, myShell, myRbuck, myRrupt, myAc
-        real(wp)                                               :: myQth, myQvis, myRcell, myRmean, myKe
+        real(wp)                                               :: myQth, myQvis, myRcell, myRmean, myKe, myVolmean
 
         #:if not MFC_CASE_OPTIMIZATION and USING_AMD
             real(wp), dimension(3) :: myalpha_rho, myalpha
@@ -975,8 +977,8 @@ contains
         integer :: adap_dt_stop_max, adap_dt_stop                     !< Fail-safe exit if max iteration count reached
         real(wp) :: dmalf, dmntait, dmBtait, dm_bub_adv_src, dm_divu  !< Dummy variables for unified subgrid bubble subroutines
         integer :: i, k, l
-        real(wp), dimension(1:4) :: mom_vol, mom_qvis, mom_qth_p, mom_qth_n
-        real(wp) :: fVol, fxb_Rc
+        real(wp), dimension(1:4) :: mom_vol, mom_qvis, mom_qth_p, mom_qth_n, mom_ke
+        real(wp) :: fxb_Rc
         integer :: total_ids, bub_idx
         logical :: flg_bub_in_cv
         real(wp) :: acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke
@@ -987,7 +989,7 @@ contains
         sum_qvis = 0._wp; sum_qth = 0._wp
 
         if (hifu_params%moments) then
-            mom_vol(1:4) = 0._wp; mom_qvis(1:4) = 0._wp
+            mom_vol(1:4) = 0._wp; mom_qvis(1:4) = 0._wp; mom_ke(1:4) = 0._wp
             mom_qth_p(1:4) = 0._wp; mom_qth_n(1:4) = 0._wp
         end if
         if (hifu_params%power_balance) then
@@ -1005,11 +1007,11 @@ contains
         $:GPU_PARALLEL_LOOP(private='[k, i, myalpha_rho, myalpha, Re, cell, myVapFlux, preterm1, term2, paux, pint, Romega, &
                             & term1_fac, myR_m, mygamma_m, myPb, myMass_g, myMass_v, myR, myV, myBeta_c, myBeta_t, myR0, myPbdot, &
                             & myMvdot, myPinf, aux1, aux2, myCson, myRho, gamma, pi_inf, qv, dmalf, dmntait, dmBtait, myAc, &
-                            & myShell, myRbuck, myRrupt, dm_bub_adv_src, dm_divu, adap_dt_stop, fxb_Rc, fVol]', &
-                            & reduction='[[adap_dt_stop_max], [mom_vol(1:4), mom_qvis(1:4), mom_qth_p(1:4), &
+                            & myShell, myRbuck, myRrupt, dm_bub_adv_src, dm_divu, adap_dt_stop, fxb_Rc]', &
+                            & reduction='[[adap_dt_stop_max], [mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), mom_qth_p(1:4), &
                             & mom_qth_n(1:4)], [acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, sum_qth]]', &
                             & reductionOp='[MAX, +, +]', copy='[adap_dt_stop_max, mom_vol(1:4), mom_qvis(1:4), mom_qth_p(1:4), &
-                            & mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, sum_qth]', copyin='[stage]')
+                            & mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, sum_qth, mom_ke(1:4)]', copyin='[stage]')
         do k = 1, nBubs
             ! Keller-Miksis model
 
@@ -1066,6 +1068,7 @@ contains
             end if
 
             call s_compute_cson_from_pinf(q_prim_vf, myPinf, cell, myRho, gamma, pi_inf, myCson)
+            bub_rho(k) = myRho  ! Used for moments of KE
 
             ! Adaptive time stepping
             if (adap_dt) then
@@ -1074,7 +1077,7 @@ contains
                 call s_advance_step(myRho, myPinf, myR, myV, myR0, myPb, myPbdot, dmalf, dmntait, dmBtait, dm_bub_adv_src, &
                                     & dm_divu, k, myMass_v, myMass_g, myBeta_c, myBeta_t, myCson, myInt, myShell, myRbuck, &
                                     & myRrupt, myRcell, myNoise_constant, myLambda_c, mydk, myloc, myLag_time, myAc, myQvis, &
-                                    & myQth, myKe, myRmean, adap_dt_stop)
+                                    & myQth, myKe, myRmean, myVolmean, adap_dt_stop)
 
                 ! Update bubble state
                 intfc_rad(k, 1) = myR
@@ -1092,11 +1095,11 @@ contains
                     sum_qth = sum_qth + bub_qth(k)
                     if (hifu_params%moments) then
                         fxb_Rc = (mtn_pos(k, 1, 1) - hifu_params%cloud_center(1))/hifu_params%R_cloud
-                        fVol = (4._wp/3._wp)*pi*myR**3._wp
 
                         $:GPU_LOOP(parallelism='[seq]')
                         do i = 1, 4
-                            mom_vol(i) = mom_vol(i) + fVol*(fxb_Rc)**(i - 1)
+                            mom_vol(i) = mom_vol(i) + (myVolmean/(0.5_wp*dt))*(fxb_Rc)**(i - 1)
+                            mom_ke(i) = mom_ke(i) + (myKe/(0.5_wp*dt))*(fxb_Rc)**(i - 1)
                             mom_qvis(i) = mom_qvis(i) + (myQvis/(0.5_wp*dt))*(fxb_Rc)**(i - 1)
                             if (myQth < 0._wp) then
                                 mom_qth_p(i) = mom_qth_p(i) + (myQth/(0.5_wp*dt))*(fxb_Rc)**(i - 1)
@@ -1143,9 +1146,10 @@ contains
                         moments_bubs(2, i) = moments_bubs(2, i) + mom_qth_p(i)
                         moments_bubs(3, i) = moments_bubs(3, i) + mom_qth_n(i)
                         moments_bubs(4, i) = moments_bubs(4, i) + mom_vol(i)
+                        moments_bubs(5, i) = moments_bubs(5, i) + mom_ke(i)
                     end do
 
-                    do i = 1, 4
+                    do i = 1, 5
                         call s_write_moments(moments_bubs(i,1:4), idx=i)
                     end do
                 else
@@ -1154,6 +1158,7 @@ contains
                         moments_bubs(2, i) = mom_qth_p(i)
                         moments_bubs(3, i) = mom_qth_n(i)
                         moments_bubs(4, i) = mom_vol(i)
+                        moments_bubs(5, i) = mom_ke(i)
                     end do
                 end if
             end if
@@ -1250,7 +1255,7 @@ contains
         if (proc_rank == 0) then
             write (line, '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') mytime + hdid, hdid, &
                    & acPW_nbubs, acPw_qvis, acPw_qth, acPw_ke
-            write (89, '(A)') trim(line)
+            write (86, '(A)') trim(line)
         end if
 
     end subroutine s_write_power_balance_bubs
@@ -1752,12 +1757,12 @@ contains
     subroutine s_compute_bubble_heat_sources_HIFU(hdid)
 
         real(wp), intent(in)     :: hdid
-        real(wp)                 :: fpb_h, fmass_n_h, fmass_v_h, fR_h, fV_h, fbeta_t_h, fshell_h
+        real(wp)                 :: fpb_h, fmass_n_h, fmass_v_h, fR_h, fV_h, fbeta_t_h, fshell_h, frho
         real(wp)                 :: conc_v_h, R_m_h, gamma_m_h, T_bar_h, grad_T_h, heatflux_h, fR0_h
         integer                  :: k, i
         integer                  :: abortFlag, abortFlag_max
-        real(wp), dimension(1:4) :: mom_vol, mom_qvis, mom_qth_p, mom_qth_n
-        real(wp)                 :: fxb_Rc, fqvis, fqth, fVol
+        real(wp), dimension(1:4) :: mom_vol, mom_qvis, mom_qth_p, mom_qth_n, mom_ke
+        real(wp)                 :: fxb_Rc, fqvis, fqth, fVol, fke
         logical                  :: flg_bub_in_cv
         real(wp)                 :: acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke
         real(wp)                 :: sum_qvis, sum_qth
@@ -1765,7 +1770,7 @@ contains
         sum_qvis = 0._wp; sum_qth = 0._wp
 
         if (hifu_params%moments) then
-            mom_vol(1:4) = 0._wp; mom_qvis(1:4) = 0._wp
+            mom_vol(1:4) = 0._wp; mom_qvis(1:4) = 0._wp; mom_ke(1:4) = 0._wp
             mom_qth_p(1:4) = 0._wp; mom_qth_n(1:4) = 0._wp
         end if
 
@@ -1779,9 +1784,9 @@ contains
 #endif
         abortFlag_max = 0
         $:GPU_PARALLEL_LOOP(private='[k]',reduction='[[abortFlag_max], [acPw_qvis, acPw_qth, acPW_nbubs, sum_qvis, &
-                            & sum_qth], [mom_vol(1:4), mom_qvis(1:4), mom_qth_p(1:4), mom_qth_n(1:4)]]', reductionOp='[MAX, +, &
-                            & +]',copy='[abortFlag_max, mom_vol(1:4), mom_qvis(1:4), mom_qth_p(1:4), mom_qth_n(1:4), acPw_qvis, &
-                            & acPw_qth, acPW_nbubs, sum_qvis, sum_qth]')
+                            & sum_qth], [mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), mom_qth_p(1:4), mom_qth_n(1:4)]]', &
+                            & reductionOp='[MAX, +, +]',copy='[abortFlag_max, mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), &
+                            & mom_qth_p(1:4), mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, sum_qvis, sum_qth]')
         do k = 1, nBubs
             abortFlag = 0
             !> Current bubble state (no temporal values)
@@ -1793,6 +1798,7 @@ contains
             fV_h = intfc_vel(k, 1)
             fbeta_t_h = gas_betaT(k)
             fshell_h = mrmtnt_shell(k, 1)
+            frho = bub_rho(k)
             if (hifu_params%moments) fxb_Rc = (mtn_pos(k, 1, 1) - hifu_params%cloud_center(1))/hifu_params%R_cloud
 
             ! Mixture properties in the bubble
@@ -1829,6 +1835,7 @@ contains
             bub_hifu_rad(k) = bub_hifu_rad(k) + hdid*fR_h
 
             fVol = (4._wp/3._wp)*pi*fR_h**3._wp
+            fke = 2._wp*pi*frho*fR_h**3._wp*fV_h**2._wp
 
             ! Checking for NaNs and negative qvis
             if (bub_qvis(k) /= bub_qvis(k) .or. bub_qth(k) /= bub_qth(k) .or. bub_qvis(k) < 0._wp) then
@@ -1846,7 +1853,8 @@ contains
                 $:GPU_LOOP(parallelism='[seq]')
                 do i = 1, 4
                     mom_vol(i) = mom_vol(i) + fVol*(fxb_Rc)**(i - 1)
-                    mom_qvis(i) = mom_qvis(i) + (fqvis/hdid)*(fxb_Rc)**(i - 1)
+                    mom_qvis(i) = mom_qvis(i) + fqvis*(fxb_Rc)**(i - 1)
+                    mom_ke(i) = mom_ke(i) + fke*(fxb_Rc)**(i - 1)
                     if (fqth < 0._wp) then
                         mom_qth_p(i) = mom_qth_p(i) + fqth*(fxb_Rc)**(i - 1)
                     else
@@ -1875,6 +1883,7 @@ contains
             call s_write_moments(mom_qth_p, idx=2)
             call s_write_moments(mom_qth_n, idx=3)
             call s_write_moments(mom_vol, idx=4)
+            call s_write_moments(mom_ke, idx=5)
         end if
 
         if (hifu_params%power_balance) call s_write_power_balance_bubs(acPw_qvis, acPw_qth, acPw_ke, acPW_nbubs, dt)
@@ -2809,6 +2818,7 @@ contains
         @:DEALLOCATE(bub_qvis)
         @:DEALLOCATE(bub_qth)
         @:DEALLOCATE(bub_hifu_rad)
+        @:DEALLOCATE(bub_rho)
 
         ! if (.not. hifu_params%heatSolver) then
         @:DEALLOCATE(Rmax_stats)

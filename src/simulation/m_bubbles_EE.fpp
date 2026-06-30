@@ -160,7 +160,8 @@ contains
         integer  :: i, j, k, l, q, ii               !< Loop variables
         integer  :: adap_dt_stop_max, adap_dt_stop  !< Fail-safe exit if max iteration count reached
         integer  :: dmBub_id                        !< Dummy variables for unified subgrid bubble subroutines
-        real(wp) :: dmMass_v, dmMass_n, dmBeta_c, dmBeta_t, dmCson, dmshell, dmRbuck, dmRrupt, dmQvis, dmQth, dmRmean, dmKe
+        real(wp) :: dmMass_v, dmMass_n, dmBeta_c, dmBeta_t, dmCson, dmshell, dmRbuck, dmRrupt, dmQvis, dmQth, dmRmean, dmKe, &
+             & dmVolmean
         real(wp) :: dmNoise_constant, dmLambda_c, dmdk, dmLoc, dmTime, dmInt, dmA, dmRcell
 
         $:GPU_PARALLEL_LOOP(private='[j, k, l, q]', collapse=3)
@@ -280,7 +281,7 @@ contains
                                                     & bub_adv_src(j, k, l), divu_in%sf(j, k, l), dmBub_id, dmMass_v, dmMass_n, &
                                                     & dmBeta_c, dmBeta_t, dmCson, dmInt, dmshell, dmRbuck, dmRrupt, dmRcell, &
                                                     & dmNoise_constant, dmLambda_c, dmdk, dmLoc, dmTime, dmA, dmQvis, dmQth, &
-                                                    & dmKe, dmRmean, adap_dt_stop)
+                                                    & dmKe, dmRmean, dmVolmean, adap_dt_stop)
 
                                 q_cons_vf(rs(q))%sf(j, k, l) = nbub*myR
                                 q_cons_vf(vs(q))%sf(j, k, l) = nbub*myV

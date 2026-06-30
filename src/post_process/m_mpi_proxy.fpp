@@ -104,6 +104,31 @@ contains
             & 'bc_y%Twall_out','bc_z%Twall_in', 'bc_z%Twall_out']
             call MPI_BCAST(${VAR}$, 1, mpi_p, 0, MPI_COMM_WORLD, ierr)
         #:endfor
+
+        ! manual HIFU
+        if (hifu) then
+            #:for VAR in [ 'sampling', 'heatSolver', 'intPrms', 'streaming', 'automatic_stages', &
+                & 'stg1', 'stg2', 'stg3', 'stg3_3d', 'cartesian', 'moments','power_balance' ]
+                call MPI_BCAST(hifu_params%${VAR}$, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr)
+            #:endfor
+
+            #:for VAR in ['t_step_stop_stg1', 't_step_stop_stg2', 't_step_stop_stg3', &
+                & 'stepStopSource', 't_step_save_stg3', 'p_cyl', 'm', 'n', 'p']
+                call MPI_BCAST(hifu_params%${VAR}$, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+            #:endfor
+
+            #:for VAR in [ 'Tref', 'K', 'alpha', 'atmPres', 'absCoef', 'dt_stg3', 'dt_stg2', 't_stop_stg1', &
+                & 't_stop_stg2', 'z_max', 'xb', 'xe', 'ye', 'cfl_stg3', 'R_cloud', &
+                & 'cv_xb', 'cv_xe', 'cv_yb', 'cv_ye', 'cv_zb', 'cv_ze']
+                call MPI_BCAST(hifu_params%${VAR}$, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+            #:endfor
+
+            do i = 1, 3
+                #:for VAR in [ 'hifu_params%cloud_center']
+                    call MPI_BCAST(${VAR}$ (i), 1, mpi_p, 0, MPI_COMM_WORLD, ierr)
+                #:endfor
+            end do
+        end if
 #endif
 
     end subroutine s_mpi_bcast_user_inputs

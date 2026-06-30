@@ -406,7 +406,7 @@ contains
     subroutine s_advance_step(fRho, fP, fR, fV, fR0, fpb, fpbdot, alf, fntait, fBtait, f_bub_adv_src, f_divu, bub_id, fmass_v, &
 
         & fmass_g, fbeta_c, fbeta_t, fCson, fInt, fshell, fRbuck, fRrupt, fRcell, fnoise_constant, flambda_c, fdk, floc, ftime, &
-            & fAc, fQvis, fQth, fke, fRmean, adap_dt_stop)
+            & fAc, fQvis, fQth, fke, fRmean, fVolmean, adap_dt_stop)
         $:GPU_ROUTINE(function_name='s_advance_step',parallelism='[seq]', cray_inline=True)
 
         real(wp), intent(inout) :: fR, fV, fpb, fmass_v
@@ -418,7 +418,7 @@ contains
         real(wp), intent(in)    :: fInt, fRbuck, fRrupt, fRcell
         real(wp), intent(in)    :: fnoise_constant, flambda_c, fdk, floc, ftime
         ! real(wp), dimension(num_noise), intent(in) :: fPhase_rn
-        real(wp), intent(out)  :: fQvis, fQth, fRmean, fke, fAc
+        real(wp), intent(out)  :: fQvis, fQth, fRmean, fke, fAc, fVolmean
         integer, intent(inout) :: adap_dt_stop
         real(wp), dimension(5) :: err    !< Error estimates for adaptive time stepping
         real(wp)               :: t_new  !< Updated time step size
@@ -441,6 +441,7 @@ contains
         fQth = 0._wp
         fke = 0._wp
         fRmean = 0._wp
+        fVolmean = 0._wp
         fAc = 0._wp
         iter_count = 0
         adap_dt_stop = 0
@@ -545,6 +546,7 @@ contains
 
                             !> Mean radius
                             fRmean = fRmean + h*fR
+                            fVolmean = fVolmean + h*((4._wp/3._wp)*pi*fR**3._wp)
 
                             !> Kinetic Energy
                             fke = fke + h*(2._wp*pi*fRho*fR**3._wp*fV**2._wp)

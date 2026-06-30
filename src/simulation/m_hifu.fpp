@@ -594,7 +594,7 @@ contains
 
                                 $:GPU_LOOP(parallelism='[seq]')
                                 do i = 1, 4
-                                    mom_qac(i) = mom_qac(i) + intensity_ac*hdid*vol_cell*(xb_Rc)**(i - 1)
+                                    mom_qac(i) = mom_qac(i) + intensity_ac*vol_cell*(xb_Rc)**(i - 1)
                                 end do
                             end if
                         end if
@@ -703,16 +703,16 @@ contains
             write (line, &
                    & '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",", ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') mytime &
                    & + hdid, hdid, acPw_in_dt(1), acPw_in_dt(2), acPw_in_dt(3), acPw_in_dt(4), acPw_in_dt(5), acPw_in_dt(6)
-            write (92, '(A)') trim(line)
+            write (89, '(A)') trim(line)
 
             write (line, &
                    & '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",", ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') mytime &
                    & + hdid, hdid, acPw_out_dt(1), acPw_out_dt(2), acPw_out_dt(3), acPw_out_dt(4), acPw_out_dt(5), acPw_out_dt(6)
-            write (91, '(A)') trim(line)
+            write (88, '(A)') trim(line)
 
             write (line, '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') mytime + hdid, hdid, acPw_qac, &
                    & acPw_cmprssv, acPw_kntc
-            write (90, '(A)') trim(line)
+            write (87, '(A)') trim(line)
         end if
 
     end subroutine s_write_power_balance
@@ -1307,28 +1307,33 @@ contains
                 file_path = trim(case_dir) // trim(file_path)
                 open (93, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
                 write (93, '(A)') 'mytime,normMom_f,normMom_s,normMom_t,totalVolume'
+
+                write (file_path, '(A,I0,A)') '/D/moments_ke.dat'
+                file_path = trim(case_dir) // trim(file_path)
+                open (92, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
+                write (92, '(A)') 'mytime,normMom_f,normMom_s,normMom_t,totalKE'
             end if
 
             if (hifu_params%power_balance) then
                 write (file_path, '(A,I0,A)') '/D/power_balance_in.dat'
                 file_path = trim(case_dir) // trim(file_path)
-                open (92, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
-                write (92, '(A)') 'mytime,hdid,acPw_in_xb,acPw_in_xe,acPw_in_yb,acPw_in_ye,acPw_in_zb,acPw_in_ze'
+                open (89, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
+                write (89, '(A)') 'mytime,hdid,acPw_in_xb,acPw_in_xe,acPw_in_yb,acPw_in_ye,acPw_in_zb,acPw_in_ze'
 
                 write (file_path, '(A,I0,A)') '/D/power_balance_out.dat'
                 file_path = trim(case_dir) // trim(file_path)
-                open (91, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
-                write (91, '(A)') 'mytime,hdid,acPw_out_xb,acPw_out_xe,acPw_out_yb,acPw_out_ye,acPw_out_zb,acPw_out_ze'
+                open (88, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
+                write (88, '(A)') 'mytime,hdid,acPw_out_xb,acPw_out_xe,acPw_out_yb,acPw_out_ye,acPw_out_zb,acPw_out_ze'
 
                 write (file_path, '(A,I0,A)') '/D/power_balance_qac.dat'
                 file_path = trim(case_dir) // trim(file_path)
-                open (90, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
-                write (90, '(A)') 'mytime,hdid,qac,acPw_cmprssv,acPw_kntc'
+                open (87, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
+                write (87, '(A)') 'mytime,hdid,qac,acPw_cmprssv,acPw_kntc'
 
                 write (file_path, '(A,I0,A)') '/D/power_balance_qbub.dat'
                 file_path = trim(case_dir) // trim(file_path)
-                open (89, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
-                write (89, '(A)') 'mytime,hdid,nbubs,qvis,qth,ke'
+                open (86, FILE=trim(file_path), form='formatted', POSITION='append', STATUS='replace')
+                write (86, '(A)') 'mytime,hdid,nbubs,qvis,qth,ke'
             end if
         end if
 
@@ -1352,9 +1357,11 @@ contains
             close (94)
             close (93)
             close (92)
-            close (91)
-            close (90)
+
             close (89)
+            close (88)
+            close (87)
+            close (86)
         end if
 
     end subroutine s_close_run_time_information_samplingHIFU

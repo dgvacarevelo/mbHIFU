@@ -519,6 +519,7 @@ contains
 
                 call s_read_ib_data_files(trim(case_dir) // '/restart_data' // trim(mpiiofs), t_step)
             else
+                print*, 'Are we here?', proc_rank
                 call s_mpi_abort('File ' // trim(file_loc) // ' is missing. Exiting.')
             end if
         end if
