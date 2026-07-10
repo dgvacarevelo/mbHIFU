@@ -235,7 +235,7 @@ RUN_COMMAND = Command(
             name="name",
             short="#",
             help="(Batch) Job name.",
-            default="MFC",
+            default="mbHF",
             metavar="NAME",
         ),
         Argument(

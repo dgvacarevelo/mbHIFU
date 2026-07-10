@@ -1867,7 +1867,7 @@ contains
                     acPw_qvis = acPw_qvis + fqvis  ! (Watts)
                     acPw_qth = acPw_qth + fqth  ! (Watts)
                     acPW_nbubs = acPW_nbubs + 1._wp
-                    acPw_ke = 0._wp  ! Kinetic energy of the bubble, can be added if needed
+                    acPw_ke = acPw_ke + fke  ! (Joules)
                 end if
             end if
         end do
