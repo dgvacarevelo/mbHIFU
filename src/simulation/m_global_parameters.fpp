@@ -73,6 +73,14 @@ module m_global_parameters
     $:GPU_DECLARE(create='[accel_bf]')
     ! $:GPU_DECLARE(create='[k_x,w_x,p_x,g_x,k_y,w_y,p_y,g_y,k_z,w_z,p_z,g_z]')
 
+    ! Synthetic turbulence (scalars auto-generated in generated_decls.fpp; their
+    ! GPU_DECLARE lines live in m_global_parameters_common)
+    integer, dimension(num_synth_shells_max)     :: synth_n_waves_per_shell
+    real(wp), dimension(num_synth_shells_max)    :: synth_k_shell, synth_amp_shell
+    real(wp), dimension(num_turb_sources_max, 3) :: turb_pos, synth_L
+    $:GPU_DECLARE(create='[synth_n_waves_per_shell, synth_k_shell, synth_amp_shell]')
+    $:GPU_DECLARE(create='[turb_pos, synth_L]')
+
     integer :: cpu_start, cpu_end, cpu_rate
 
     $:GPU_DECLARE(create='[hyper_model]')
@@ -174,6 +182,14 @@ module m_global_parameters
     integer :: fd_number  !< Finite-difference half-stencil size: MAX(1, fd_order/2)
     $:GPU_DECLARE(create='[fd_number]')
 
+    !> @name Centered finite-difference coefficients in x-, y- and z-coordinate directions
+    !> @{
+    real(wp), allocatable, dimension(:,:) :: fd_coeff_x
+    real(wp), allocatable, dimension(:,:) :: fd_coeff_y
+    real(wp), allocatable, dimension(:,:) :: fd_coeff_z
+    !> @}
+    $:GPU_DECLARE(create='[fd_coeff_x, fd_coeff_y, fd_coeff_z]')
+
     ! probe, integral: auto-generated in generated_decls.fpp
 
     !> @name Reference density and pressure for Tait EOS
@@ -256,7 +272,7 @@ module m_global_parameters
     type(pres_field), allocatable, dimension(:) :: pb_ts
     type(pres_field), allocatable, dimension(:) :: mv_ts
 
-    $:GPU_DECLARE(create='[pb_ts, mv_ts]')
+    $:GPU_DECLARE(create='[mytime, pb_ts, mv_ts]')
 
     !> @name lagrangian subgrid bubble parameters
     !> lag_params: auto-generated in generated_decls.fpp
@@ -494,6 +510,17 @@ contains
                 ${param}$_${dir}$ = dflt_real
             #:endfor
         #:endfor
+
+        synthetic_turbulence = .false.
+        synth_seed = 1234
+        synth_n_shells = dflt_int
+        num_turbulent_sources = 0
+        synth_U_inf = dflt_real
+        synth_n_waves_per_shell = 0
+        synth_k_shell = dflt_real
+        synth_amp_shell = dflt_real
+        turb_pos = dflt_real
+        synth_L = dflt_real
 
         do j = 1, num_probes_max
             acoustic(j)%pulse = dflt_int
@@ -930,15 +957,7 @@ contains
 
         if (ib) allocate (MPI_IO_IB_DATA%var%sf(0:m,0:n,0:p))
 
-        if (elasticity) then
-            fd_number = max(1, fd_order/2)
-        end if
-
-        if (mhd) then
-            fd_number = max(1, fd_order/2)
-        end if
-
-        if (probe_wrt) then
+        if (elasticity .or. mhd .or. probe_wrt .or. ib) then
             fd_number = max(1, fd_order/2)
         end if
 
@@ -994,6 +1013,12 @@ contains
 
         $:GPU_UPDATE(device='[relax, relax_model, palpha_eps, ptgalpha_eps]')
 
+        if (synthetic_turbulence) then
+            $:GPU_UPDATE(device='[synthetic_turbulence, num_turbulent_sources]')
+            $:GPU_UPDATE(device='[synth_U_inf, synth_n_waves_per_shell, synth_k_shell, synth_amp_shell]')
+            $:GPU_UPDATE(device='[turb_pos, synth_L]')
+        end if
+
         ! Allocating grid variables for the x-, y- and z-directions
         @:ALLOCATE(x_cb(-1 - buff_size:m + buff_size))
         @:ALLOCATE(x_cc(-buff_size:m + buff_size))
@@ -1046,6 +1071,7 @@ contains
         @:DEALLOCATE(fluid_inv_re)
 
         if (bubbles_euler) then
+            @:DEALLOCATE(ptil)
             @:DEALLOCATE(qbmm_idx%rs, qbmm_idx%vs, qbmm_idx%ps, qbmm_idx%ms)
             if (qbmm) then
                 @:DEALLOCATE(qbmm_idx%moms)

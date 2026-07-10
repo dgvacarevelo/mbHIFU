@@ -301,7 +301,6 @@ contains
         abortFlag_max = 0
 
         if (cyl_coord .and. p == 0) then  ! Axysimetric
-
 #ifdef MFC_DEBUG
             if (proc_rank == 0) print*, 'Computing axysimetric acoustic damping', mytime, hdid
 #endif

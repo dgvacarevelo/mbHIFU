@@ -19,6 +19,7 @@ module m_start_up
     use m_riemann_solvers
     use m_cbc
     use m_boundary_common
+    use m_boundary_io
     use m_acoustic_src
     use m_rhs
     use m_chemistry
@@ -680,7 +681,6 @@ contains
 
     !> Collect per-process wall-clock times and write aggregate performance metrics to file
     impure subroutine s_save_performance_metrics(time_avg, time_final, io_time_avg, io_time_final, proc_time, io_proc_time, &
-
         & file_exists, t_step, exitFlag)
 
         real(wp), intent(inout)               :: time_avg, time_final
@@ -982,7 +982,7 @@ contains
                 call s_write_ib_state_file(0)
             end if
         end if
-        if (bodyForces) call s_initialize_body_forces_module()
+        if (bodyForces .or. synthetic_turbulence) call s_initialize_body_forces_module()
         if (acoustic_source) call s_precalculate_acoustic_spatial_sources()
 
         ! Initialize the Temperature cache.
@@ -1199,7 +1199,7 @@ contains
         call s_finalize_mpi_proxy_module()
 
         if (surface_tension) call s_finalize_surface_tension_module()
-        if (bodyForces) call s_finalize_body_forces_module()
+        if (bodyForces .or. synthetic_turbulence) call s_finalize_body_forces_module()
         if (ib) call s_finalize_ibm_module()
 
         call s_mpi_finalize()
@@ -1592,6 +1592,13 @@ contains
                     call MPI_SENDRECV(end_val, 1, mpi_p, send_neighbor, ${TAG + 1}$, recv_val, 1, mpi_p, recv_neighbor, &
                                       & ${TAG + 1}$, MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
                     end_val = recv_val
+
+                    ! protect from looping back around on yourself multiple times
+                    if (f_approx_equal(beg_val, ${X}$_cb(${DIM}$)) .or. f_approx_equal(end_val, ${X}$_cb(-1))) then
+                        beg_val = -huge(0._wp)
+                        end_val = huge(0._wp)
+                        exit
+                    end if
                 end do
                 neighbor_domain_${X}$%beg = beg_val
                 neighbor_domain_${X}$%end = end_val

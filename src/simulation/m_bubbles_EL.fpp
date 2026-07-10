@@ -1507,7 +1507,6 @@ contains
         end if
 
         if (any(lag_params%interaction_model == (/2, 3/))) then  ! Aditya's model, Pout is going to be I term from eqn 3.19
-
             $:GPU_PARALLEL_LOOP(private='[k, cell]')
             do k = 1, nBubs
                 ! Number of the bubbles in the smearing volume (Self-inclusive)

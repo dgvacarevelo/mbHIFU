@@ -192,24 +192,21 @@ contains
             #:endfor
         end do
 
-        ! manual HIFU
+        ! manual: HIFU
         if (hifu) then
             #:for VAR in [ 'sampling', 'heatSolver', 'intPrms', 'streaming', 'automatic_stages', &
                 & 'stg1', 'stg2', 'stg3', 'stg3_3d', 'cartesian', 'moments','power_balance' ]
                 call MPI_BCAST(hifu_params%${VAR}$, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr)
             #:endfor
-
             #:for VAR in ['t_step_stop_stg1', 't_step_stop_stg2', 't_step_stop_stg3', &
                 & 'stepStopSource', 't_step_save_stg3', 'p_cyl', 'm', 'n', 'p']
                 call MPI_BCAST(hifu_params%${VAR}$, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
             #:endfor
-
             #:for VAR in [ 'Tref', 'K', 'alpha', 'atmPres', 'absCoef', 'dt_stg3', 'dt_stg2', 't_stop_stg1', &
                 & 't_stop_stg2', 'z_max', 'xb', 'xe', 'ye', 'cfl_stg3', 'R_cloud', &
                 & 'cv_xb', 'cv_xe', 'cv_yb', 'cv_ye', 'cv_zb', 'cv_ze']
                 call MPI_BCAST(hifu_params%${VAR}$, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
             #:endfor
-
             do i = 1, 3
                 #:for VAR in [ 'hifu_params%cloud_center']
                     call MPI_BCAST(${VAR}$ (i), 1, mpi_p, 0, MPI_COMM_WORLD, ierr)
@@ -217,14 +214,21 @@ contains
             end do
         end if
 
-        !> Acoustic wave parameters (boundary condition)
+        ! manual: acoustic wave as boundary condition
         #:for VAR in ['iwave', 'ncycles']
             call MPI_BCAST(acoustic_bc_params%${VAR}$, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
         #:endfor
-
         #:for VAR in [ 'Pbase', 'rho', 'cson', 'Pamp', 'freq', 'focLen', 'focCal', 'apert']
             call MPI_BCAST(acoustic_bc_params%${VAR}$, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
         #:endfor
+
+        ! manual: synthetic turbulence namelist arrays (registered as indexed
+        ! variants only; scalars are broadcast by generated_bcast.fpp)
+        call MPI_BCAST(synth_n_waves_per_shell, num_synth_shells_max, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+        call MPI_BCAST(synth_k_shell, num_synth_shells_max, mpi_p, 0, MPI_COMM_WORLD, ierr)
+        call MPI_BCAST(synth_amp_shell, num_synth_shells_max, mpi_p, 0, MPI_COMM_WORLD, ierr)
+        call MPI_BCAST(turb_pos, num_turb_sources_max*3, mpi_p, 0, MPI_COMM_WORLD, ierr)
+        call MPI_BCAST(synth_L, num_turb_sources_max*3, mpi_p, 0, MPI_COMM_WORLD, ierr)
 #endif
 
     end subroutine s_mpi_bcast_user_inputs

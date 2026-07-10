@@ -119,6 +119,10 @@ module m_constants
     integer, parameter :: BC_ACOUSTIC_WAVE = -20  ! Transducer or planar wave bro BC
     integer, parameter :: BC_AXIS_SECTOR = -21  ! HIFU cyl sector heat eqn
 
+    ! Synthetic turbulence array size limits
+    integer, parameter :: num_synth_shells_max = 50  !< Max energy shells for synthetic turbulence
+    integer, parameter :: num_turb_sources_max = 10  !< Max Gaussian forcing zones for synthetic turbulence
+
     ! Named values for enumerated case parameters (e.g. riemann_solver_hllc).
     ! AUTO-GENERATED from "names" in toolchain/mfc/params/definitions.py.
     #:include 'generated_constants.fpp'
