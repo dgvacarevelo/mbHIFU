@@ -1782,10 +1782,10 @@ contains
         if (proc_rank == 0) print *, 'Computing bubble heat sources', mytime, hdid
 #endif
         abortFlag_max = 0
-        $:GPU_PARALLEL_LOOP(private='[k]',reduction='[[abortFlag_max], [acPw_qvis, acPw_qth, acPW_nbubs, sum_qvis, &
+        $:GPU_PARALLEL_LOOP(private='[k]',reduction='[[abortFlag_max], [acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, &
                             & sum_qth], [mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), mom_qth_p(1:4), mom_qth_n(1:4)]]', &
                             & reductionOp='[MAX, +, +]',copy='[abortFlag_max, mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), &
-                            & mom_qth_p(1:4), mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, sum_qvis, sum_qth]')
+                            & mom_qth_p(1:4), mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, sum_qth]')
         do k = 1, nBubs
             abortFlag = 0
             !> Current bubble state (no temporal values)
