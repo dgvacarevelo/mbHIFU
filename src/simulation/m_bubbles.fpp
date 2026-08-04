@@ -405,7 +405,7 @@ contains
     !! Differential Equations I, Chapter II.4)
     subroutine s_advance_step(fRho, fP, fR, fV, fR0, fpb, fpbdot, alf, fntait, fBtait, f_bub_adv_src, f_divu, bub_id, fmass_v, &
                               & fmass_g, fbeta_c, fbeta_t, fCson, fInt, fshell, fRbuck, fRrupt, fRcell, fnoise_constant, &
-                              & flambda_c, fdk, floc, ftime, fAc, fQvis, fQth, fke, fRmean, fVolmean, adap_dt_stop)
+                              & flambda_c, fdk, floc, ftime, fAc, fQvis, fQth, fQac, fke, fRmean, fVolmean, adap_dt_stop)
         $:GPU_ROUTINE(function_name='s_advance_step',parallelism='[seq]', cray_inline=True)
 
         real(wp), intent(inout) :: fR, fV, fpb, fmass_v
@@ -417,7 +417,7 @@ contains
         real(wp), intent(in)    :: fInt, fRbuck, fRrupt, fRcell
         real(wp), intent(in)    :: fnoise_constant, flambda_c, fdk, floc, ftime
         ! real(wp), dimension(num_noise), intent(in) :: fPhase_rn
-        real(wp), intent(out)  :: fQvis, fQth, fRmean, fke, fAc, fVolmean
+        real(wp), intent(out)  :: fQvis, fQth, fQac, fRmean, fke, fAc, fVolmean
         integer, intent(inout) :: adap_dt_stop
         real(wp), dimension(5) :: err    !< Error estimates for adaptive time stepping
         real(wp)               :: t_new  !< Updated time step size
@@ -428,7 +428,7 @@ contains
         real(wp)               :: fR2, fV2, fpb2, fmass_v2
         integer                :: iter_count
         real(wp)               :: conc_v_h, R_m_h, gamma_m_h, T_bar_h, grad_T_h, heatflux_h
-        real(wp)               :: fAc1, fAc21, fAc22, fvis_inst, fth_inst, fpb_updt
+        real(wp)               :: fAc1, fAc21, fAc22, fvis_inst, fth_inst, fpb_updt, fac_inst, fp_far_field
 
         call s_initial_substep_h(fRho, fP, fR, fV, fR0, fpb, fpbdot, alf, fntait, fBtait, f_bub_adv_src, f_divu, fCson, fInt, &
                                  & fshell, fRbuck, fRcell, h0)
@@ -438,6 +438,7 @@ contains
         t_new = 0._wp
         fQvis = 0._wp
         fQth = 0._wp
+        fQac = 0._wp
         fke = 0._wp
         fRmean = 0._wp
         fVolmean = 0._wp
@@ -542,6 +543,11 @@ contains
                             end if
                             fth_inst = heatflux_h*4._wp*pi*fR**2._wp
                             fQth = fQth + h*fth_inst
+
+                            !> Acoustic damping of the bubble emissions
+                            fp_far_field = (fRho*fR/fR0)*(2._wp*fV**2._wp + fR*fAc)
+                            fac_inst = (4._wp/3._wp)*pi*fR0**3._wp*fp_far_field**2._wp/(2._wp*fRho*fCson)
+                            fQac = fQac + h*fac_inst
 
                             !> Mean radius
                             fRmean = fRmean + h*fR

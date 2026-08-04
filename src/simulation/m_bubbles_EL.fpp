@@ -164,7 +164,7 @@ contains
             @:ALLOCATE(moments_bubs(1:5, 1:4))
         end if
         if (hifu_params%power_balance) then
-            @:ALLOCATE(acPw_bubs(1:3))
+            @:ALLOCATE(acPw_bubs(1:4))
         end if
 
         ! Interbubble interaction 1: emitted Pout, 2: sum of Pouts from volume of influence (self-inclusive)
@@ -963,7 +963,7 @@ contains
         real(wp)                                               :: myPinf, aux1, aux2, myCson, myRho
         real(wp)                                               :: gamma, pi_inf, qv
         real(wp)                                               :: Rb, myConc_v, myPout, myInt, myShell, myRbuck, myRrupt, myAc
-        real(wp)                                               :: myQth, myQvis, myRcell, myRmean, myKe, myVolmean
+        real(wp)                                               :: myQth, myQvis, myQac, myRcell, myRmean, myKe, myVolmean
 
         #:if not MFC_CASE_OPTIMIZATION and USING_AMD
             real(wp), dimension(3) :: myalpha_rho, myalpha
@@ -981,8 +981,8 @@ contains
         real(wp) :: fxb_Rc
         integer :: total_ids, bub_idx
         logical :: flg_bub_in_cv
-        real(wp) :: acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke
-        real(wp) :: sum_qvis, sum_qth
+        real(wp) :: acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, acPw_qac
+        real(wp) :: sum_qvis, sum_qth, absCoef
 
         call nvtxStartRange("LAGRANGE-BUBBLE-DYNAMICS")
 
@@ -994,7 +994,7 @@ contains
         end if
         if (hifu_params%power_balance) then
             acPw_qvis = 0._wp; acPw_qth = 0._wp
-            acPW_nbubs = 0._wp; acPw_ke = 0._wp
+            acPW_nbubs = 0._wp; acPw_ke = 0._wp; acPw_qac = 0._wp
         end if
 
         ! Subgrid p_inf model based on Maeda and Colonius (2018).
@@ -1009,9 +1009,10 @@ contains
                             & myMvdot, myPinf, aux1, aux2, myCson, myRho, gamma, pi_inf, qv, dmalf, dmntait, dmBtait, myAc, &
                             & myShell, myRbuck, myRrupt, dm_bub_adv_src, dm_divu, adap_dt_stop, fxb_Rc]', &
                             & reduction='[[adap_dt_stop_max], [mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), mom_qth_p(1:4), &
-                            & mom_qth_n(1:4)], [acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, sum_qth]]', &
+                            & mom_qth_n(1:4)], [acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, acPw_qac, sum_qvis, sum_qth]]', &
                             & reductionOp='[MAX, +, +]', copy='[adap_dt_stop_max, mom_vol(1:4), mom_qvis(1:4), mom_qth_p(1:4), &
-                            & mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, sum_qth, mom_ke(1:4)]', copyin='[stage]')
+                            & mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, acPw_qac, sum_qvis, sum_qth, &
+                            & mom_ke(1:4)]', copyin='[stage]')
         do k = 1, nBubs
             ! Keller-Miksis model
 
@@ -1070,6 +1071,12 @@ contains
             call s_compute_cson_from_pinf(q_prim_vf, myPinf, cell, myRho, gamma, pi_inf, myCson)
             bub_rho(k) = myRho  ! Used for moments of KE
 
+            absCoef = 0._wp
+            $:GPU_LOOP(parallelism='[seq]')
+            do i = 1, num_fluids
+                absCoef = absCoef + q_prim_vf(eqn_idx%E + i)%sf(cell(1), cell(2), cell(3))*fluid_pp(i)%absCoef
+            end do
+
             ! Adaptive time stepping
             if (adap_dt) then
                 if (stage == 3) myLag_time = mytime - 0.5_wp*dt
@@ -1077,7 +1084,7 @@ contains
                 call s_advance_step(myRho, myPinf, myR, myV, myR0, myPb, myPbdot, dmalf, dmntait, dmBtait, dm_bub_adv_src, &
                                     & dm_divu, k, myMass_v, myMass_g, myBeta_c, myBeta_t, myCson, myInt, myShell, myRbuck, &
                                     & myRrupt, myRcell, myNoise_constant, myLambda_c, mydk, myloc, myLag_time, myAc, myQvis, &
-                                    & myQth, myKe, myRmean, myVolmean, adap_dt_stop)
+                                    & myQth, myQac, myKe, myRmean, myVolmean, adap_dt_stop)
 
                 ! Update bubble state
                 intfc_rad(k, 1) = myR
@@ -1113,6 +1120,7 @@ contains
                         if (flg_bub_in_cv) then
                             acPw_qvis = acPw_qvis + myQvis/(0.5_wp*dt)  ! (Watts)
                             acPw_qth = acPw_qth + myQth/(0.5_wp*dt)  ! (Watts)
+                            acPw_qac = acPw_qac + myQac*2._wp*absCoef/(0.5_wp*dt)  ! (Watts)
                             acPW_nbubs = acPW_nbubs + 1._wp
                             acPw_ke = acPw_ke + myKe/(0.5_wp*dt)  ! (Watts)
                         end if
@@ -1167,11 +1175,13 @@ contains
                     acPw_bubs(1) = 0.5_wp*acPw_bubs(1) + 0.5_wp*acPw_qvis
                     acPw_bubs(2) = 0.5_wp*acPw_bubs(2) + 0.5_wp*acPw_qth
                     acPw_bubs(3) = 0.5_wp*acPw_bubs(3) + 0.5_wp*acPw_ke
-                    call s_write_power_balance_bubs(acPw_bubs(1), acPw_bubs(2), acPw_bubs(3), acPW_nbubs, dt)
+                    acPw_bubs(4) = 0.5_wp*acPw_bubs(4) + 0.5_wp*acPw_qac
+                    call s_write_power_balance_bubs(acPw_bubs(1), acPw_bubs(2), acPw_bubs(3), acPw_bubs(4), acPW_nbubs, dt)
                 else
                     acPw_bubs(1) = acPw_qvis
                     acPw_bubs(2) = acPw_qth
                     acPw_bubs(3) = acPw_ke
+                    acPw_bubs(4) = acPw_qac
                 end if
             end if
             if (stage == 3) call s_sum_qbub(sum_qvis, sum_qth)
@@ -1230,9 +1240,9 @@ contains
 
     end function f_bub_in_cv
 
-    subroutine s_write_power_balance_bubs(acPw_qvis, acPw_qth, acPw_ke, acPW_nbubs, hdid)
+    subroutine s_write_power_balance_bubs(acPw_qvis, acPw_qth, acPw_ke, acPw_qac, acPW_nbubs, hdid)
 
-        real(wp), intent(inout) :: acPw_qvis, acPw_qth, acPw_ke, acPW_nbubs
+        real(wp), intent(inout) :: acPw_qvis, acPw_qth, acPw_ke, acPw_qac, acPW_nbubs
         real(wp)                :: hdid
         real(wp)                :: var_glb
         integer                 :: i
@@ -1248,13 +1258,16 @@ contains
             call s_mpi_allreduce_sum(acPw_ke, var_glb)
             acPw_ke = var_glb
 
+            call s_mpi_allreduce_sum(acPw_qac, var_glb)
+            acPw_qac = var_glb
+
             call s_mpi_allreduce_sum(acPW_nbubs, var_glb)
             acPW_nbubs = var_glb
         end if
 
         if (proc_rank == 0) then
-            write (line, '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') mytime + hdid, hdid, &
-                   & acPW_nbubs, acPw_qvis, acPw_qth, acPw_ke
+            write (line, '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') mytime + hdid, &
+                   & hdid, acPW_nbubs, acPw_qvis, acPw_qth, acPw_ke, acPw_qac
             write (86, '(A)') trim(line)
         end if
 
@@ -1761,9 +1774,9 @@ contains
         integer                  :: k, i
         integer                  :: abortFlag, abortFlag_max
         real(wp), dimension(1:4) :: mom_vol, mom_qvis, mom_qth_p, mom_qth_n, mom_ke
-        real(wp)                 :: fxb_Rc, fqvis, fqth, fVol, fke
+        real(wp)                 :: fxb_Rc, fqvis, fqth, fVol, fke, fac
         logical                  :: flg_bub_in_cv
-        real(wp)                 :: acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke
+        real(wp)                 :: acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, acPw_qac
         real(wp)                 :: sum_qvis, sum_qth
 
         sum_qvis = 0._wp; sum_qth = 0._wp
@@ -1776,16 +1789,17 @@ contains
         if (hifu_params%power_balance) then
             acPw_qvis = 0._wp; acPw_qth = 0._wp
             acPW_nbubs = 0._wp; acPw_ke = 0._wp
+            acPw_qac = 0._wp
         end if
 
 #ifdef MFC_DEBUG
         if (proc_rank == 0) print *, 'Computing bubble heat sources', mytime, hdid
 #endif
         abortFlag_max = 0
-        $:GPU_PARALLEL_LOOP(private='[k]',reduction='[[abortFlag_max], [acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, &
-                            & sum_qth], [mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), mom_qth_p(1:4), mom_qth_n(1:4)]]', &
+        $:GPU_PARALLEL_LOOP(private='[k]',reduction='[[abortFlag_max], [acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, acPw_qac, &
+                            & sum_qvis, sum_qth], [mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), mom_qth_p(1:4), mom_qth_n(1:4)]]', &
                             & reductionOp='[MAX, +, +]',copy='[abortFlag_max, mom_vol(1:4), mom_ke(1:4), mom_qvis(1:4), &
-                            & mom_qth_p(1:4), mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, sum_qvis, sum_qth]')
+                            & mom_qth_p(1:4), mom_qth_n(1:4), acPw_qvis, acPw_qth, acPW_nbubs, acPw_ke, acPw_qac, sum_qvis, sum_qth]')
         do k = 1, nBubs
             abortFlag = 0
             !> Current bubble state (no temporal values)
@@ -1827,6 +1841,9 @@ contains
             fqth = heatflux_h*4._wp*pi*fR_h**2._wp
             bub_qth(k) = bub_qth(k) + hdid*fqth
 
+            !> Acoustic damping of the bubble emissions
+            fac = 0._wp  ! need to figure this out
+
             sum_qvis = sum_qvis + bub_qvis(k)
             sum_qth = sum_qth + bub_qth(k)
 
@@ -1866,6 +1883,7 @@ contains
                 if (flg_bub_in_cv) then
                     acPw_qvis = acPw_qvis + fqvis  ! (Watts)
                     acPw_qth = acPw_qth + fqth  ! (Watts)
+                    acPw_qac = acPw_qac + fac  ! (Watts)
                     acPW_nbubs = acPW_nbubs + 1._wp
                     acPw_ke = acPw_ke + fke  ! (Joules)
                 end if
@@ -1885,7 +1903,7 @@ contains
             call s_write_moments(mom_ke, idx=5)
         end if
 
-        if (hifu_params%power_balance) call s_write_power_balance_bubs(acPw_qvis, acPw_qth, acPw_ke, acPW_nbubs, dt)
+        if (hifu_params%power_balance) call s_write_power_balance_bubs(acPw_qvis, acPw_qth, acPw_ke, acPw_qac, acPW_nbubs, dt)
 
     end subroutine s_compute_bubble_heat_sources_HIFU
 
