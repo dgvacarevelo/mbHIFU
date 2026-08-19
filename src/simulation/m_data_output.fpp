@@ -1641,9 +1641,11 @@ contains
                         #:endif
                     else
                         #:if not MFC_CASE_OPTIMIZATION or num_dims > 2
-                            write (i + 30, &
-                                   & '(6X,F12.6,F24.8,F24.8,F24.8,F24.8,' // 'F24.8,F24.8,F24.8,F24.8,F24.8,' // 'F24.8)') &
-                                   & nondim_time, rho, vel(1), vel(2), vel(3), pres, gamma, pi_inf, qv, c, accel
+                            ! write (i + 30, &
+                            !        & '(6X,F12.6,F24.8,F24.8,F24.8,F24.8,' // 'F24.8,F24.8,F24.8,F24.8,F24.8,' // 'F24.8)') &
+                            !        & nondim_time, rho, vel(1), vel(2), vel(3), pres, gamma, pi_inf, qv, c, accel
+                            write (i + 30, '(6X,11E24.8)') nondim_time, rho, vel(1), vel(2), vel(3), pres, gamma, pi_inf, qv, c, &
+                                   & accel
                         #:endif
                     end if
                 end if
