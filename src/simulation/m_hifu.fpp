@@ -152,6 +152,7 @@ contains
             else
                 t_step_stop = hifu_params%t_step_stop_stg2
             end if
+            call s_open_run_time_information_samplingHIFU()
             return
         end if
 
@@ -631,7 +632,8 @@ contains
 
             if (abortFlag_max > 0) stop "NaNs in Acoustic intensity"
 
-            call s_write_power_balance(acPw_in_dt, acPw_out_dt, acPw_qac, acPw_cmprssv, acPw_kntc, hdid)
+            if (hifu_params%power_balance) call s_write_power_balance(acPw_in_dt, acPw_out_dt, acPw_qac, acPw_cmprssv, acPw_kntc, &
+                & hdid)
 
             if (num_procs > 1) then
                 tmp = sum_qac
@@ -925,40 +927,42 @@ contains
 
         if (f_approx_equal(sampledTime, 0._wp)) call s_mpi_abort("mbHF: time sampled is zero. Run stage 2.")
 
+        $:GPU_PARALLEL_LOOP(private='[i, j, k]', collapse=3)
+        do k = idwbuff(3)%beg, idwbuff(3)%end
+            do j = idwbuff(2)%beg, idwbuff(2)%end
+                do i = idwbuff(1)%beg, idwbuff(1)%end
+                    q_hifu%vf(sys_size_hifu)%sf(i, j, k) = q_hifu%vf(qac_hs_idx)%sf(i, j, k)
+                end do
+            end do
+        end do
+        $:END_GPU_PARALLEL_LOOP()
+
+        $:GPU_PARALLEL_LOOP(private='[i, j, k, l]', collapse=4)
+        do l = 1, sys_size_hifu - 1
+            do k = idwbuff(3)%beg, idwbuff(3)%end
+                do j = idwbuff(2)%beg, idwbuff(2)%end
+                    do i = idwbuff(1)%beg, idwbuff(1)%end
+                        q_hifu%vf(l)%sf(i, j, k) = 0._wp
+                    end do
+                end do
+            end do
+        end do
+        $:END_GPU_PARALLEL_LOOP()
+
+        if (proc_rank == 0) print*, 'Here are the non-averaged source terms: q_src - Time sampled:', sampledTime
+        call s_mpi_barrier()
+        call s_print_hifu_source_stats(qac_hs_idx, sum_val_qac)
+
         if (bubbles_lagrange) then
             if (proc_rank == 0) print*, 'Adding bubbles in pure 3D domain'
             call s_mean_radius_hifu(sampledTime)
             hifu_idx%qvis = 1; hifu_idx%qth = hifu_idx%qvis + 1
             $:GPU_UPDATE(device='[hifu_params, hifu_idx]')
 
-            $:GPU_PARALLEL_LOOP(private='[i, j, k]', collapse=3)
-            do k = idwbuff(3)%beg, idwbuff(3)%end
-                do j = idwbuff(2)%beg, idwbuff(2)%end
-                    do i = idwbuff(1)%beg, idwbuff(1)%end
-                        q_hifu%vf(sys_size_hifu)%sf(i, j, k) = q_hifu%vf(qac_hs_idx)%sf(i, j, k)
-                    end do
-                end do
-            end do
-            $:END_GPU_PARALLEL_LOOP()
-
-            $:GPU_PARALLEL_LOOP(private='[i, j, k, l]', collapse=4)
-            do l = 1, sys_size_hifu - 1
-                do k = idwbuff(3)%beg, idwbuff(3)%end
-                    do j = idwbuff(2)%beg, idwbuff(2)%end
-                        do i = idwbuff(1)%beg, idwbuff(1)%end
-                            q_hifu%vf(l)%sf(i, j, k) = 0._wp
-                        end do
-                    end do
-                end do
-            end do
-            $:END_GPU_PARALLEL_LOOP()
-
             call s_smoothfunction(nBubs, bub_hifu_rad, intfc_vel, mtn_s, mtn_posPrev, q_hifu, bub_qvis, bub_qth)
             if (num_procs > 0) call s_populate_EL_buffers(q_hifu, bc_type, nVar=2)
 
-            if (proc_rank == 0) print*, 'Here are the non-averaged source terms: q_src'
             call s_mpi_barrier()
-            call s_print_hifu_source_stats(sys_size_hifu, sum_val_qac)
             call s_print_hifu_source_stats(hifu_idx%qvis, sum_val_qvis)
             call s_print_hifu_source_stats(hifu_idx%qth, sum_val_qth)
             if (proc_rank == 0) then
@@ -967,66 +971,69 @@ contains
                 write (98, '(A)') trim(line)
                 close (98)
             end if
+        end if
 
-            call s_start_HIFU_indexes(stg=3)
-            $:GPU_UPDATE(device='[hifu_params, hifu_idx]')
+        call s_start_HIFU_indexes(stg=3)
+        $:GPU_UPDATE(device='[hifu_params, hifu_idx]')
 
-            abortFlag = 0._wp; CFL_heat_max = -100_wp
+        abortFlag = 0._wp; CFL_heat_max = -100_wp
 
-            $:GPU_PARALLEL_LOOP(private='[i, j, k, q_ac, q_vis, q_th, alpha, rho_cp, tdiff]', collapse=3, &
-                                & reduction='[[abortFlag], [CFL_heat_max]]', reductionOp='[+, MAX]', copy='[abortFlag, &
-                                & sampledTime, CFL_heat_max]')
-            do k = idwbuff(3)%beg, idwbuff(3)%end
-                do j = idwbuff(2)%beg, idwbuff(2)%end
-                    do i = idwbuff(1)%beg, idwbuff(1)%end
-                        q_ac = q_hifu%vf(sys_size_hifu)%sf(i, j, k)/sampledTime
-                        q_vis = q_hifu%vf(1)%sf(i, j, k)/sampledTime
-                        q_th = q_hifu%vf(2)%sf(i, j, k)/sampledTime
+        $:GPU_PARALLEL_LOOP(private='[i, j, k, q_ac, q_vis, q_th, alpha, rho_cp, tdiff]', collapse=3, &
+                            & reduction='[[abortFlag], [CFL_heat_max]]', reductionOp='[+, MAX]', copy='[abortFlag, sampledTime, CFL_heat_max]')
+        do k = idwbuff(3)%beg, idwbuff(3)%end
+            do j = idwbuff(2)%beg, idwbuff(2)%end
+                do i = idwbuff(1)%beg, idwbuff(1)%end
+                    q_ac = q_hifu%vf(sys_size_hifu)%sf(i, j, k)/sampledTime
+                    q_vis = q_hifu%vf(1)%sf(i, j, k)/sampledTime
+                    q_th = q_hifu%vf(2)%sf(i, j, k)/sampledTime
 
-                        q_hifu%vf(hifu_idx%qac)%sf(i, j, k) = q_ac
-                        q_hifu%vf(hifu_idx%qvis)%sf(i, j, k) = q_vis
-                        q_hifu%vf(hifu_idx%qth)%sf(i, j, k) = q_th
-                        q_hifu%vf(hifu_idx%T)%sf(i, j, k) = hifu_params%Tref
+                    q_hifu%vf(hifu_idx%qac)%sf(i, j, k) = q_ac
+                    q_hifu%vf(hifu_idx%qvis)%sf(i, j, k) = q_vis
+                    q_hifu%vf(hifu_idx%qth)%sf(i, j, k) = q_th
+                    q_hifu%vf(hifu_idx%T)%sf(i, j, k) = hifu_params%Tref
 
-                        !> Get thermal properties
-                        rho_cp = 0._wp; tdiff = 0._wp
-                        $:GPU_LOOP(parallelism='[seq]')
-                        do l = 1, num_fluids
-                            alpha = q_cons_vf(eqn_idx%adv%beg + l - 1)%sf(i, j, k)
-                            rho_cp = rho_cp + alpha*rho_cp_fluids(l)
-                            tdiff = tdiff + alpha*tdiff_fluids(l)
-                        end do
-
-                        if (f_is_default(rho_cp) .or. f_is_default(tdiff)) abortFlag = abortFlag + 1._wp
-
-                        q_hifu%vf(hifu_idx%T + 1)%sf(i, j, k) = (q_ac + q_vis + q_th)/rho_cp
-
-                        CFL_heat = max(CFL_heat, tdiff*dt/(dx(i)**2.0_wp))
-                        CFL_heat = max(CFL_heat, tdiff*dt/(dy(j)**2.0_wp))
-                        if (p > 0) CFL_heat = max(CFL_heat, tdiff*dt/(dz(k)**2.0_wp))
-                        CFL_heat_max = max(CFL_heat_max, CFL_heat)
+                    !> Get thermal properties
+                    rho_cp = 0._wp; tdiff = 0._wp
+                    $:GPU_LOOP(parallelism='[seq]')
+                    do l = 1, num_fluids
+                        alpha = q_cons_vf(eqn_idx%adv%beg + l - 1)%sf(i, j, k)
+                        rho_cp = rho_cp + alpha*rho_cp_fluids(l)
+                        tdiff = tdiff + alpha*tdiff_fluids(l)
                     end do
+
+                    if (f_is_default(rho_cp) .or. f_is_default(tdiff)) abortFlag = abortFlag + 1._wp
+
+                    q_hifu%vf(hifu_idx%T + 1)%sf(i, j, k) = (q_ac + q_vis + q_th)/rho_cp
+
+                    CFL_heat = max(CFL_heat, tdiff*dt/(dx(i)**2.0_wp))
+                    CFL_heat = max(CFL_heat, tdiff*dt/(dy(j)**2.0_wp))
+                    if (p > 0) CFL_heat = max(CFL_heat, tdiff*dt/(dz(k)**2.0_wp))
+                    CFL_heat_max = max(CFL_heat_max, CFL_heat)
                 end do
             end do
-            $:END_GPU_PARALLEL_LOOP()
+        end do
+        $:END_GPU_PARALLEL_LOOP()
 
-            if (proc_rank == 0) print*, 'Here are the averaged source terms: q_src*(1/tsampled)*(1/rho*cp)'
-            call s_mpi_barrier()
-            call s_print_hifu_source_stats(hifu_idx%qac, sum_val_qac)
+        if (proc_rank == 0) print*, 'Here are the averaged source terms: q_src*(1/tsampled)*(1/rho*cp)'
+        call s_mpi_barrier()
+        call s_print_hifu_source_stats(hifu_idx%qac, sum_val_qac)
+        if (bubbles_lagrange) then
             call s_print_hifu_source_stats(hifu_idx%qvis, sum_val_qvis)
             call s_print_hifu_source_stats(hifu_idx%qth, sum_val_qth)
-
-            if (num_procs > 1) then
-                val_tmp = abortFlag
-                call s_mpi_allreduce_max(val_tmp, abortFlag)
-                val_tmp = CFL_heat_max
-                call s_mpi_allreduce_max(val_tmp, CFL_heat_max)
-            end if
-
-            if (proc_rank == 0) print*, 'Max CFL:', CFL_heat_max
-
-            if (abortFlag > 0._wp) call s_mpi_abort("mbHF: not defined thermal properties (rho_cp or tdiff)")
         end if
+
+        if (num_procs > 1) then
+            val_tmp = abortFlag
+            call s_mpi_allreduce_max(val_tmp, abortFlag)
+            val_tmp = CFL_heat_max
+            call s_mpi_allreduce_max(val_tmp, CFL_heat_max)
+        end if
+
+        if (proc_rank == 0) print*, 'Max CFL:', CFL_heat_max
+
+        if (abortFlag > 0._wp) call s_mpi_abort("mbHF: not defined thermal properties (rho_cp or tdiff)")
+
+        if (proc_rank == 0) print*, hifu_idx%T, hifu_idx%qac, hifu_idx%qvis, hifu_idx%qth
 
     end subroutine s_initialize_pure_3D
 

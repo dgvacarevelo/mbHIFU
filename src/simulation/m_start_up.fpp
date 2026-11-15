@@ -126,7 +126,7 @@ contains
             call s_mpi_abort(trim(file_path) // ' is missing. Exiting.')
         end if
 
-        if (hifu_params%automatic_stages) call s_restart_hifu_stages()
+        ! if (hifu_params%automatic_stages) call s_restart_hifu_stages()
 
     end subroutine s_read_input_file
 
@@ -1074,6 +1074,8 @@ contains
         end if
 
         call s_mpi_bcast_user_inputs()
+
+        if (hifu_params%automatic_stages) call s_restart_hifu_stages()
 
         ! Save original BCs before decomposition overwrites them with MPI neighbor ranks
         ib_bc_x = bc_x
