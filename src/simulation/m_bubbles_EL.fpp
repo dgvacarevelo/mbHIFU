@@ -724,19 +724,19 @@ contains
                 gas_betaT(i) = MPI_IO_DATA_lag_bubbles(i, 20)
                 gas_betaC(i) = MPI_IO_DATA_lag_bubbles(i, 21)
                 ! Marmotant
-                mrmtnt_shell(bub_id, 1) = MPI_IO_DATA_lag_bubbles(i, 22)
-                mrmtnt_Rbuck(bub_id) = MPI_IO_DATA_lag_bubbles(i, 23)
-                mrmtnt_Rrupt(bub_id) = MPI_IO_DATA_lag_bubbles(i, 24)
+                mrmtnt_shell(i, 1) = MPI_IO_DATA_lag_bubbles(i, 22)
+                mrmtnt_Rbuck(i) = MPI_IO_DATA_lag_bubbles(i, 23)
+                mrmtnt_Rrupt(i) = MPI_IO_DATA_lag_bubbles(i, 24)
                 ! hifu
-                bub_qvis(bub_id) = MPI_IO_DATA_lag_bubbles(i, 25)
-                bub_qth(bub_id) = MPI_IO_DATA_lag_bubbles(i, 26)
-                intfc_ac(bub_id, 1) = MPI_IO_DATA_lag_bubbles(i, 27)
-                bub_hifu_rad(bub_id) = MPI_IO_DATA_lag_bubbles(i, 28)
+                bub_qvis(i) = MPI_IO_DATA_lag_bubbles(i, 25)
+                bub_qth(i) = MPI_IO_DATA_lag_bubbles(i, 26)
+                intfc_ac(i, 1) = MPI_IO_DATA_lag_bubbles(i, 27)
+                bub_hifu_rad(i) = MPI_IO_DATA_lag_bubbles(i, 28)
 
-                bub_interact(bub_id) = 0._wp
+                bub_interact(i) = 0._wp
                 if (polytropic) then
-                    gas_p(bub_id, 2) = gas_p(bub_id, 1)
-                    gas_p(bub_id, 1) = pv + (gas_p(bub_id, 2) - pv)*(bub_R0(bub_id)/intfc_rad(bub_id, 1))**(3._wp*gam_m)
+                    gas_p(i, 2) = gas_p(i, 1)
+                    gas_p(i, 1) = pv + (gas_p(i, 2) - pv)*(bub_R0(i)/intfc_rad(i, 1))**(3._wp*gam_m)
                 end if
                 cell = -buff_size
                 call s_locate_cell(mtn_pos(i,1:3,1), cell, mtn_s(i,1:3,1))

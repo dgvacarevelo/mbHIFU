@@ -951,7 +951,7 @@ contains
 
         if (proc_rank == 0) print*, 'Here are the non-averaged source terms: q_src - Time sampled:', sampledTime
         call s_mpi_barrier()
-        call s_print_hifu_source_stats(qac_hs_idx, sum_val_qac)
+        call s_print_hifu_source_stats(sys_size_hifu, sum_val_qac)
 
         if (bubbles_lagrange) then
             if (proc_rank == 0) print*, 'Adding bubbles in pure 3D domain'
