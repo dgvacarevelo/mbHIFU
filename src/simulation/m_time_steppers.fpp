@@ -934,7 +934,7 @@ contains
                     q_hifu%vf(hifu_idx%T)%sf(j, k, l) = q_hifu%vf(hifu_idx%T)%sf(j, k, l) + dt*rhs_vf(1)%sf(j, k, l)
                     ! Max and min
                     temp_max = max(temp_max, q_hifu%vf(hifu_idx%T)%sf(j, k, l))
-                    temp_min = min(temp_min, q_hifu%vf(hifu_idx%T)%sf(j, k, l))
+                    ! temp_min = min(temp_min, q_hifu%vf(hifu_idx%T)%sf(j, k, l))
 
                     if (temp_max > 15000._wp) abortFlag = abortFlag + 1._wp
                 end do
@@ -943,15 +943,15 @@ contains
         $:END_GPU_PARALLEL_LOOP()
 
         if (num_procs > 1) then
-            val_tmp = temp_max
-            call s_mpi_allreduce_max(val_tmp, temp_max)
-            val_tmp = temp_min
-            call s_mpi_allreduce_min(val_tmp, temp_min)
+            ! val_tmp = temp_max
+            ! call s_mpi_allreduce_max(val_tmp, temp_max)
+            ! val_tmp = temp_min
+            ! call s_mpi_allreduce_min(val_tmp, temp_min)
             val_tmp = abortFlag
             call s_mpi_allreduce_max(val_tmp, abortFlag)
         end if
 
-        if (proc_rank == 0) print *, 'Temp max:', temp_max, 'Temp min:', temp_min
+        ! if (proc_rank == 0) print *, 'Temp (max, min):', temp_max, temp_min
         if (abortFlag > 0._wp) call s_mpi_abort("mbHF: Temperature above 250")
 
         call nvtxEndRange

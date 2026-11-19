@@ -949,12 +949,12 @@ contains
         end do
         $:END_GPU_PARALLEL_LOOP()
 
-        if (proc_rank == 0) print*, 'Here are the non-averaged source terms: q_src - Time sampled:', sampledTime
+        if (proc_rank == 0) print*, 'Raw source-term sums over a sampling period of', sampledTime
         call s_mpi_barrier()
         call s_print_hifu_source_stats(sys_size_hifu, sum_val_qac)
 
         if (bubbles_lagrange) then
-            if (proc_rank == 0) print*, 'Adding bubbles in pure 3D domain'
+            if (proc_rank == 0) print*, 'Pure 3D domain contains bubbles'
             call s_mean_radius_hifu(sampledTime)
             hifu_idx%qvis = 1; hifu_idx%qth = hifu_idx%qvis + 1
             $:GPU_UPDATE(device='[hifu_params, hifu_idx]')
@@ -1014,7 +1014,7 @@ contains
         end do
         $:END_GPU_PARALLEL_LOOP()
 
-        if (proc_rank == 0) print*, 'Here are the averaged source terms: q_src*(1/tsampled)*(1/rho*cp)'
+        if (proc_rank == 0) print*, 'Time-averaged source terms divided by volumetric heat capacity: q_src / (t_sampled * rho * cp)'
         call s_mpi_barrier()
         call s_print_hifu_source_stats(hifu_idx%qac, sum_val_qac)
         if (bubbles_lagrange) then
@@ -1032,8 +1032,6 @@ contains
         if (proc_rank == 0) print*, 'Max CFL:', CFL_heat_max
 
         if (abortFlag > 0._wp) call s_mpi_abort("mbHF: not defined thermal properties (rho_cp or tdiff)")
-
-        if (proc_rank == 0) print*, hifu_idx%T, hifu_idx%qac, hifu_idx%qvis, hifu_idx%qth
 
     end subroutine s_initialize_pure_3D
 
@@ -1078,7 +1076,7 @@ contains
         end if
 
         if (proc_rank == 0) then
-            if (idx == hifu_idx%qac) print*, 'q_us (min, max):', min_val, max_val
+            if (idx == hifu_idx%qac) print*, 'q_ac (min, max):', min_val, max_val
             if (idx == hifu_idx%qvis) print*, 'q_vis smeared (min, max):', min_val, max_val
             if (idx == hifu_idx%qth) print*, 'q_th smeared (min, max):', min_val, max_val
         end if
