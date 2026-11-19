@@ -951,7 +951,7 @@ contains
 
         if (proc_rank == 0) print*, 'Raw source-term sums over a sampling period of', sampledTime
         call s_mpi_barrier()
-        call s_print_hifu_source_stats(sys_size_hifu, sum_val_qac)
+        call s_print_hifu_source_stats(sys_size_hifu, sum_val_qac, converted_flg=.false.)
 
         if (bubbles_lagrange) then
             if (proc_rank == 0) print*, 'Pure 3D domain contains bubbles'
@@ -963,8 +963,8 @@ contains
             if (num_procs > 0) call s_populate_EL_buffers(q_hifu, bc_type, nVar=2)
 
             call s_mpi_barrier()
-            call s_print_hifu_source_stats(hifu_idx%qvis, sum_val_qvis)
-            call s_print_hifu_source_stats(hifu_idx%qth, sum_val_qth)
+            call s_print_hifu_source_stats(hifu_idx%qvis, sum_val_qvis, converted_flg=.false.)
+            call s_print_hifu_source_stats(hifu_idx%qth, sum_val_qth, converted_flg=.false.)
             if (proc_rank == 0) then
                 write (line, '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') sampledTime, &
                        & 0._wp, 0._wp, 0._wp, 0._wp, sum_val_qvis, sum_val_qth
@@ -1016,10 +1016,10 @@ contains
 
         if (proc_rank == 0) print*, 'Time-averaged source terms divided by volumetric heat capacity: q_src / (t_sampled * rho * cp)'
         call s_mpi_barrier()
-        call s_print_hifu_source_stats(hifu_idx%qac, sum_val_qac)
+        call s_print_hifu_source_stats(hifu_idx%qac, sum_val_qac, converted_flg=.true.)
         if (bubbles_lagrange) then
-            call s_print_hifu_source_stats(hifu_idx%qvis, sum_val_qvis)
-            call s_print_hifu_source_stats(hifu_idx%qth, sum_val_qth)
+            call s_print_hifu_source_stats(hifu_idx%qvis, sum_val_qvis, converted_flg=.true.)
+            call s_print_hifu_source_stats(hifu_idx%qth, sum_val_qth, converted_flg=.true.)
         end if
 
         if (num_procs > 1) then
@@ -1035,12 +1035,13 @@ contains
 
     end subroutine s_initialize_pure_3D
 
-    subroutine s_print_hifu_source_stats(idx, sum_val)
+    subroutine s_print_hifu_source_stats(idx, sum_val, converted_flg)
 
         integer, intent(in)   :: idx
         real(wp), intent(out) :: sum_val
         real(wp)              :: max_val, min_val, tmp_local, tmp_global, val_test, vol_cell
         integer               :: j, k, l
+        logical, intent(in)   :: converted_flg
 
         max_val = -abs(dflt_real)
         min_val = abs(dflt_real)
@@ -1076,9 +1077,15 @@ contains
         end if
 
         if (proc_rank == 0) then
-            if (idx == hifu_idx%qac) print*, 'q_ac (min, max):', min_val, max_val
-            if (idx == hifu_idx%qvis) print*, 'q_vis smeared (min, max):', min_val, max_val
-            if (idx == hifu_idx%qth) print*, 'q_th smeared (min, max):', min_val, max_val
+            if (converted_flg) then
+                if (idx == hifu_idx%qac) print*, 'q_ac (min, max):', min_val, max_val
+                if (idx == hifu_idx%qvis) print*, 'q_vis smeared (min, max):', min_val, max_val
+                if (idx == hifu_idx%qth) print*, 'q_th smeared (min, max):', min_val, max_val
+            else
+                if (idx == sys_size_hifu) print*, 'q_ac (min, max):', min_val, max_val
+                if (idx == hifu_idx%qvis) print*, 'q_vis smeared (min, max):', min_val, max_val
+                if (idx == hifu_idx%qth) print*, 'q_th smeared (min, max):', min_val, max_val
+            end if
         end if
 
     end subroutine s_print_hifu_source_stats
